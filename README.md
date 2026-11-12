@@ -86,7 +86,7 @@ Java_TDS_deepseek/
 ### Windows (PowerShell)
 
 ```powershell
-git clone https://github.com/totallyANT/Java_TDS_deepseek.git
+git clone <your-repo-url>
 cd Java_TDS_deepseek
 .\mvnw.cmd javafx:run
 ```
@@ -94,7 +94,7 @@ cd Java_TDS_deepseek
 ### Linux / macOS
 
 ```bash
-git clone https://github.com/totallyANT/Java_TDS_deepseek.git
+git clone <your-repo-url>
 cd Java_TDS_deepseek
 chmod +x mvnw        # only needed once, if git did not preserve the executable bit
 ./mvnw javafx:run
