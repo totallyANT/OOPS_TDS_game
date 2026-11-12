@@ -1,0 +1,18 @@
+# Test Cases Specification & Verification Matrix
+
+The following test matrix documents both normal workflows and exceptional edge cases tested across the Tower Defense application. All cases have corresponding automated verification routines implemented in `src/test/java/td/GameLogicTest.java`.
+
+| Test ID | Test Category | Description | Input / Precondition | Expected Behavior | Actual Result | Verification Method |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **TC01** | Normal Operation | Construct Archer Tower | Initial Gold: 150g; place Archer at cell `(0, 0)` | 50g deducted (gold=100g); ArcherTower created at (0, 0); tracked in towers list | PASSED | Automated (`GameLogicTest.testCase1`) |
+| **TC02** | Normal Operation | Upgrade Tower via `Upgradable` | Tower placed at `(1, 1)`; Gold: 100g; invoke `upgradeTowerAt(1, 1)` | 30g deducted (gold=70g); Tower level becomes 2; damage increased by +10 (to 30) | PASSED | Automated (`GameLogicTest.testCase2`) |
+| **TC03** | Normal Operation | Combat Step & Goblin Bounty | Goblin (50 HP) spawned at `(2, 0)`; Archer placed at `(1, 0)`; tick simulation | Archer attacks for 20 damage; Goblin takes full damage (HP 50 -> 30 -> 10); bounty awarded on death | PASSED | Automated (`GameLogicTest.testCase3`) |
+| **TC04** | Normal Operation | Boss Armor Damage Mitigation | BossEnemy (140 HP, armor=8); take 20 damage, then take 10 damage | 20 DMG mitigated by 8 = 12 taken (HP 128); 10 DMG mitigated to minimum 5 taken (HP 123) | PASSED | Automated (`GameLogicTest.testCase4`) |
+| **TC05** | Normal Operation | Mage Tower Chilling Slow Effect | Mage Tower placed at `(1, 0)`; Goblin at `(2, 0)`; tick simulation | Mage deals 25 DMG and applies slow; goblin movement delayed by 1 turn | PASSED | Automated (`GameLogicTest.testCase5`) |
+| **TC06** | Normal Operation | Armory Keyword Search | Archer and Cannon towers active; search "Archer", "Cannon", and "(0, 1)" | Filters correctly returning matching subsets of active towers | PASSED | Automated (`GameLogicTest.testCase6`) |
+| **TC07** | Exceptional Flow | Reject Placement on Enemy Path | Attempt to place tower on Row 2: `(2, 2)` | Rejects placement; throws `InvalidPlacementException`; gold unmodified; UI alerts user | PASSED | Automated (`GameLogicTest.testCase7`) |
+| **TC08** | Exceptional Flow | Reject Placement on Occupied Tile | Place Archer at `(0, 0)`; attempt to place Mage at `(0, 0)` | Rejects second placement; throws `InvalidPlacementException`; gold unmodified | PASSED | Automated (`GameLogicTest.testCase8`) |
+| **TC09** | Exceptional Flow | Reject Build & Upgrade with Insufficient Gold | Gold = 40g (Archer costs 50g); Gold = 0g (Upgrade costs 30g) | Both attempts throw `InsufficientGoldException`; state remains unchanged; UI displays Warning Alert | PASSED | Automated (`GameLogicTest.testCase9`) |
+| **TC10** | Multithreading | Asynchronous System & Combat Report | Launch `ReportGeneratorTask` in background thread | Executes asynchronously; aggregates stats; populates formatted summary without freezing GUI | PASSED | Automated (`GameLogicTest.testCase10`) |
+| **TC11** | Multithreading & Edge Case | Prevent Concurrent Wave Triggers | Wave currently running; user attempts to click "Start Wave" again | Engine flags `waveInProgress = true`; blocks secondary wave invocation with alert dialog | PASSED | Automated & UI Guard (`TowerDefenseApp.handleStartWave`) |
+| **TC12** | GUI Input Validation | Reject Blank Commander Name | Set Player input field is left empty or blank whitespace | Validates non-empty string; displays warning alert; preserves previous commander name | PASSED | UI Guard (`TowerDefenseApp.createTopBar`) |
