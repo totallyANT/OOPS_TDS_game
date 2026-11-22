@@ -39,4 +39,36 @@ class GameStateTest {
         assertFalse(state.isWaveRunning());
         assertTrue(state.getGold() > 70, "should have earned gold from kills");
     }
+
+    @Test
+    void tenWavesThenBossThenVictory() throws GameException {
+        GameState state = new GameState();
+        for (int w = 1; w <= GameState.MAX_WAVES; w++) {
+            buildWhateverWeCanAfford(state);
+            state.startWave();
+            if (w == GameState.MAX_WAVES) {
+                state.update(0.02); // let the first enemy spawn
+                assertEquals(1, state.getEnemies().size());
+                assertEquals("Boss", state.getEnemies().get(0).getName());
+            }
+            for (int i = 0; i < 5000 && state.isWaveRunning(); i++) {
+                state.update(0.02);
+            }
+        }
+        assertTrue(state.isVictory());
+        assertThrows(GameException.class, state::startWave); // no wave 11
+    }
+
+    // Test helper: fill empty tiles next to the path with Cannons while gold lasts
+    private void buildWhateverWeCanAfford(GameState state) {
+        for (int r = 0; r < GameState.SIZE; r++) {
+            for (int c = 0; c < GameState.SIZE; c++) {
+                try {
+                    state.placeTower("Cannon", r, c);
+                } catch (GameException ignored) {
+                    // path tile, occupied or not enough gold: just skip it
+                }
+            }
+        }
+    }
 }

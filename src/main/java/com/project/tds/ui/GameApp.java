@@ -102,9 +102,11 @@ public class GameApp extends Application {
                 draw(g);
                 goldLabel.setText("Gold: " + state.getGold());
                 livesLabel.setText("Lives: " + state.getLives());
-                waveLabel.setText("Wave: " + state.getWave());
+                waveLabel.setText("Wave: " + state.getWave() + " / " + GameState.MAX_WAVES);
                 if (state.isGameOver()) {
                     showMessage("Game over! You survived " + (state.getWave() - 1) + " waves.", true);
+                } else if (state.isVictory()) {
+                    showMessage("Victory! The Boss is down and all " + GameState.MAX_WAVES + " waves are cleared.", false);
                 }
             }
         }.start();

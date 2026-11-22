@@ -36,6 +36,8 @@ public class GameState {
     private final ArrayList<Enemy> enemies = new ArrayList<>();
     private final ArrayList<Enemy> spawnQueue = new ArrayList<>();
 
+    public static final int MAX_WAVES = 10;
+
     private int gold = 150;
     private int lives = 20;
     private int wave = 0;
@@ -94,11 +96,17 @@ public class GameState {
         if (!enemies.isEmpty() || !spawnQueue.isEmpty()) {
             throw new GameException("Wave still in progress");
         }
+        if (wave >= MAX_WAVES) {
+            throw new GameException("All waves cleared!");
+        }
         wave++;
+        if (wave == MAX_WAVES) {
+            spawnQueue.add(new Boss(path)); // final wave: the Boss, alone
+            return;
+        }
         for (int i = 0; i < 4 + wave; i++) spawnQueue.add(new Goblin(path));
         for (int i = 0; i < wave / 2; i++) spawnQueue.add(new Orc(path));
         for (int i = 0; i < wave / 3; i++) spawnQueue.add(new Slime(path));
-        if (wave % 5 == 0) spawnQueue.add(new Boss(path));
     }
 
     /** One tick of the game. dt = seconds since last tick. */
@@ -136,6 +144,8 @@ public class GameState {
     }
 
     public synchronized boolean isGameOver() { return lives <= 0; }
+    /** Won = final wave started and fully cleared while still alive. */
+    public synchronized boolean isVictory() { return wave == MAX_WAVES && !isWaveRunning() && lives > 0; }
     public synchronized boolean isWaveRunning() { return !enemies.isEmpty() || !spawnQueue.isEmpty(); }
     public synchronized int getGold() { return gold; }
     public synchronized int getLives() { return lives; }
