@@ -1,171 +1,148 @@
 package com.project.tds.engine;
 
-import com.project.tds.exception.InsufficientGoldException;
-import com.project.tds.model.Targetable;
+import com.project.tds.model.GameException;
+import com.project.tds.model.enemy.Boss;
+import com.project.tds.model.enemy.Enemy;
+import com.project.tds.model.enemy.Goblin;
+import com.project.tds.model.enemy.Orc;
+import com.project.tds.model.enemy.Slime;
+import com.project.tds.model.tower.Archer;
+import com.project.tds.model.tower.Cannon;
+import com.project.tds.model.tower.Mage;
+import com.project.tds.model.tower.Tower;
 
-import java.util.Collections;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Thread-safe container managing the central state of the game:
- * gold, player lives, wave progression, score, and active entities.
- *
- * Demonstrates:
- * - Encapsulation with defensive copying and unmodifiable collections
- * - Method-level synchronization for multithreaded safety
- * - Custom checked exception integration (InsufficientGoldException)
+ * Holds the whole game: grid, towers, enemies, gold and lives.
+ * Methods are synchronized because the game loop thread and the JavaFX thread both use this object.
  */
 public class GameState {
-    public static final int INITIAL_GOLD = 150;
-    public static final int INITIAL_LIVES = 5;
-    public static final int GRID_SIZE = 7; // 7x7 grid per team design notes
-    public static final int TOTAL_WAVES = 5;
+    public static final int SIZE = 7;
+    private static final double SPAWN_GAP = 0.8; // seconds between spawns
 
-    private int gold;
-    private int lives;
-    private int waveNumber;
-    private int score;
-    private GameStatus status;
+    // Snake-shaped path, {row, col}. Enters top at column 1, leaves bottom at column 5.
+    private static final int[][] PATH_CELLS = {
+            {0, 1}, {1, 1}, {2, 1}, {3, 1}, {4, 1}, {5, 1},
+            {5, 2}, {5, 3}, {4, 3}, {3, 3}, {2, 3}, {1, 3},
+            {1, 4}, {1, 5}, {2, 5}, {3, 5}, {4, 5}, {5, 5}, {6, 5}
+    };
 
-    // CopyOnWriteArrayList allows safe concurrent reading by UI/Engine threads
-    // while the spawner or combat resolution threads add/remove entities.
-    private final List<Targetable> activeEnemies;
-    private final List<Object> activeTowers;
+    private final List<int[]> path = new ArrayList<>();
+    private final boolean[][] pathTiles = new boolean[SIZE][SIZE];
+    private final Tower[][] towers = new Tower[SIZE][SIZE];
+    private final ArrayList<Enemy> enemies = new ArrayList<>();
+    private final ArrayList<Enemy> spawnQueue = new ArrayList<>();
+
+    private int gold = 150;
+    private int lives = 20;
+    private int wave = 0;
+    private double spawnTimer = 0;
 
     public GameState() {
-        this(INITIAL_GOLD, INITIAL_LIVES);
-    }
-
-    public GameState(int initialGold, int initialLives) {
-        this.gold = initialGold;
-        this.lives = initialLives;
-        this.waveNumber = 0;
-        this.score = 0;
-        this.status = GameStatus.NOT_STARTED;
-        this.activeEnemies = new CopyOnWriteArrayList<>();
-        this.activeTowers = new CopyOnWriteArrayList<>();
-    }
-
-    /**
-     * Deducts gold from the player's balance.
-     * Synchronized to prevent race conditions during rapid tower placement.
-     *
-     * @param amount amount to deduct
-     * @throws InsufficientGoldException if amount exceeds current gold
-     * @throws IllegalArgumentException if amount is negative
-     */
-    public synchronized void deductGold(int amount) throws InsufficientGoldException {
-        if (amount < 0) {
-            throw new IllegalArgumentException("Deduction amount cannot be negative: " + amount);
-        }
-        if (amount > this.gold) {
-            throw new InsufficientGoldException(amount, this.gold);
-        }
-        this.gold -= amount;
-    }
-
-    public synchronized void addGold(int amount) {
-        if (amount > 0) {
-            this.gold += amount;
+        for (int[] cell : PATH_CELLS) {
+            path.add(cell);
+            pathTiles[cell[0]][cell[1]] = true;
         }
     }
 
-    public synchronized void loseLives(int amount) {
-        if (amount > 0) {
-            this.lives = Math.max(0, this.lives - amount);
-            if (this.lives == 0) {
-                this.status = GameStatus.GAME_OVER;
+    public synchronized void placeTower(String type, int row, int col) throws GameException {
+        if (row < 0 || row >= SIZE || col < 0 || col >= SIZE) {
+            throw new GameException("That's outside the grid");
+        }
+        if (pathTiles[row][col]) {
+            throw new GameException("Can't build on the path");
+        }
+        if (towers[row][col] != null) {
+            throw new GameException("There's already a tower here");
+        }
+        Tower tower;
+        switch (type) {
+            case "Archer": tower = new Archer(row, col); break;
+            case "Cannon": tower = new Cannon(row, col); break;
+            case "Mage":   tower = new Mage(row, col); break;
+            default: throw new GameException("Unknown tower: " + type);
+        }
+        if (gold < tower.getCost()) {
+            throw new GameException("Not enough gold (need " + tower.getCost() + ")");
+        }
+        gold -= tower.getCost();
+        towers[row][col] = tower;
+    }
+
+    public synchronized void upgradeTower(int row, int col) throws GameException {
+        Tower tower = towers[row][col];
+        if (tower == null) {
+            throw new GameException("No tower selected");
+        }
+        if (tower.getLevel() >= Tower.MAX_LEVEL) {
+            throw new GameException(tower.getName() + " is already at max level");
+        }
+        if (gold < tower.getUpgradeCost()) {
+            throw new GameException("Not enough gold (need " + tower.getUpgradeCost() + ")");
+        }
+        tower.upgrade();
+        gold -= tower.getUpgradeCost();
+    }
+
+    public synchronized void startWave() throws GameException {
+        if (isGameOver()) {
+            throw new GameException("Game over!");
+        }
+        if (!enemies.isEmpty() || !spawnQueue.isEmpty()) {
+            throw new GameException("Wave still in progress");
+        }
+        wave++;
+        for (int i = 0; i < 4 + wave; i++) spawnQueue.add(new Goblin(path));
+        for (int i = 0; i < wave / 2; i++) spawnQueue.add(new Orc(path));
+        for (int i = 0; i < wave / 3; i++) spawnQueue.add(new Slime(path));
+        if (wave % 5 == 0) spawnQueue.add(new Boss(path));
+    }
+
+    /** One tick of the game. dt = seconds since last tick. */
+    public synchronized void update(double dt) {
+        if (isGameOver()) {
+            return;
+        }
+
+        spawnTimer -= dt;
+        if (!spawnQueue.isEmpty() && spawnTimer <= 0) {
+            enemies.add(spawnQueue.remove(0));
+            spawnTimer = SPAWN_GAP;
+        }
+
+        for (Enemy e : enemies) {
+            e.move(dt);
+        }
+        for (Tower[] row : towers) {
+            for (Tower t : row) {
+                if (t != null) t.update(dt, enemies);
+            }
+        }
+
+        Iterator<Enemy> it = enemies.iterator();
+        while (it.hasNext()) {
+            Enemy e = it.next();
+            if (!e.isAlive()) {
+                gold += e.getReward();
+                it.remove();
+            } else if (e.reachedEnd()) {
+                lives = Math.max(0, lives - e.getLivesCost());
+                it.remove();
             }
         }
     }
 
-    public synchronized void addScore(int points) {
-        if (points > 0) {
-            this.score += points;
-        }
-    }
+    public synchronized boolean isGameOver() { return lives <= 0; }
+    public synchronized boolean isWaveRunning() { return !enemies.isEmpty() || !spawnQueue.isEmpty(); }
+    public synchronized int getGold() { return gold; }
+    public synchronized int getLives() { return lives; }
+    public synchronized int getWave() { return wave; }
+    public synchronized Tower getTower(int row, int col) { return towers[row][col]; }
+    public boolean isPath(int row, int col) { return pathTiles[row][col]; }
 
-    public synchronized void nextWave() {
-        this.waveNumber++;
-    }
-
-    public synchronized void setStatus(GameStatus newStatus) {
-        this.status = newStatus;
-    }
-
-    public synchronized GameStatus getStatus() {
-        return this.status;
-    }
-
-    public synchronized boolean isGameOver() {
-        return this.lives <= 0 || this.status == GameStatus.GAME_OVER;
-    }
-
-    public synchronized boolean isVictory() {
-        return this.status == GameStatus.VICTORY;
-    }
-
-    // Entity Management (Thread-safe via CopyOnWriteArrayList)
-    public void addEnemy(Targetable enemy) {
-        if (enemy != null) {
-            activeEnemies.add(enemy);
-        }
-    }
-
-    public void removeEnemy(Targetable enemy) {
-        activeEnemies.remove(enemy);
-    }
-
-    public void addTower(Object tower) {
-        if (tower != null) {
-            activeTowers.add(tower);
-        }
-    }
-
-    public void removeTower(Object tower) {
-        activeTowers.remove(tower);
-    }
-
-    public void clearEnemies() {
-        activeEnemies.clear();
-    }
-
-    /**
-     * Resets the game state back to default values for a new match.
-     */
-    public synchronized void reset() {
-        this.gold = INITIAL_GOLD;
-        this.lives = INITIAL_LIVES;
-        this.waveNumber = 0;
-        this.score = 0;
-        this.status = GameStatus.NOT_STARTED;
-        this.activeEnemies.clear();
-        this.activeTowers.clear();
-    }
-
-    // Defensive read-only views for external callers (e.g. UI render loop)
-    public List<Targetable> getActiveEnemies() {
-        return Collections.unmodifiableList(activeEnemies);
-    }
-
-    public List<Object> getActiveTowers() {
-        return Collections.unmodifiableList(activeTowers);
-    }
-
-    public synchronized int getGold() {
-        return gold;
-    }
-
-    public synchronized int getLives() {
-        return lives;
-    }
-
-    public synchronized int getWaveNumber() {
-        return waveNumber;
-    }
-
-    public synchronized int getScore() {
-        return score;
-    }
+    /** Copy so the UI can draw without holding the lock or tripping over removals. */
+    public synchronized List<Enemy> getEnemies() { return new ArrayList<>(enemies); }
 }
