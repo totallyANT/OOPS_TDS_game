@@ -14,7 +14,6 @@ import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.Labeled;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.BorderPane;
@@ -35,10 +34,6 @@ public class GameApp extends Application {
     private static final Color RANGE = Color.web("#ff8c1a");
     private static final Color HOSTILE = Color.web("#e0393e");
     private static final Color MAGE_VIOLET = Color.web("#b07cff");
-    private static final String TEXT_STYLE = "-fx-text-fill: #e8e8e8; -fx-font-size: 13px;";
-    private static final String BUTTON_STYLE = "-fx-background-color: #23c4e8; -fx-text-fill: #14161a;"
-            + " -fx-font-weight: bold; -fx-background-radius: 0;";
-
     private final GameState state = new GameState();
     private final GameLoop loop = new GameLoop(state);
 
@@ -57,8 +52,24 @@ public class GameApp extends Application {
         Canvas canvas = new Canvas(GameState.SIZE * CELL, GameState.SIZE * CELL);
         canvas.setOnMouseClicked(e -> onTileClicked((int) (e.getY() / CELL), (int) (e.getX() / CELL)));
 
+        BorderPane root = new BorderPane(canvas);
+        root.setRight(buildSidePanel());
+
+        startDrawing(canvas.getGraphicsContext2D());
+        startGameThread();
+
+        Scene scene = new Scene(root);
+        scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm()); // colours and fonts
+        stage.setTitle("Tower Defence");
+        stage.setScene(scene);
+        stage.setResizable(false);
+        stage.show();
+    }
+
+    /** The panel on the right: stats, tower choice and buttons. */
+    private VBox buildSidePanel() {
         RadioButton archer = towerButton("Archer", "Archer (50g) - fast");
-        RadioButton cannon = towerButton("Cannon", "Cannon (80g) - heavy");
+        RadioButton cannon = towerButton("Cannon", "Cannon (80g) - splash");
         RadioButton mage = towerButton("Mage", "Mage (70g) - slows");
         archer.setSelected(true);
 
@@ -66,38 +77,30 @@ public class GameApp extends Application {
         upgradeBtn.setOnAction(e -> onUpgrade());
 
         Button waveBtn = new Button("Start next wave");
-        waveBtn.setOnAction(e -> {
-            try {
-                state.startWave();
-                showMessage("Wave " + state.getWave() + " incoming!", false);
-            } catch (GameException ex) {
-                showMessage(ex.getMessage(), true);
-            }
-        });
+        waveBtn.getStyleClass().add("wave-button");
+        waveBtn.setOnAction(e -> onStartWave());
 
+        Button newGameBtn = new Button("New game");
+        newGameBtn.getStyleClass().add("new-game-button");
+        newGameBtn.setOnAction(e -> onNewGame());
+
+        Label buildLabel = new Label("DEPLOY");
+        buildLabel.getStyleClass().add("heading");
+        goldLabel.getStyleClass().add("gold");
         messageLabel.setWrapText(true);
         selectedLabel.setWrapText(true);
-        Label buildLabel = new Label("DEPLOY");
+
         VBox side = new VBox(10, goldLabel, livesLabel, waveLabel,
                 buildLabel, archer, cannon, mage,
-                selectedLabel, upgradeBtn, waveBtn, messageLabel);
+                selectedLabel, upgradeBtn, waveBtn, newGameBtn, messageLabel);
+        side.getStyleClass().add("side-panel");
         side.setPadding(new Insets(10));
         side.setPrefWidth(220);
-        side.setStyle("-fx-background-color: #1b1e23; -fx-border-color: #23c4e8; -fx-border-width: 0 0 0 3;");
+        return side;
+    }
 
-        for (Labeled l : new Labeled[]{goldLabel, livesLabel, waveLabel, selectedLabel, archer, cannon, mage}) {
-            l.setStyle(TEXT_STYLE);
-        }
-        goldLabel.setStyle(TEXT_STYLE + " -fx-text-fill: #ffd400; -fx-font-weight: bold;");
-        buildLabel.setStyle("-fx-text-fill: #23c4e8; -fx-font-weight: bold; -fx-font-size: 14px;");
-        upgradeBtn.setStyle(BUTTON_STYLE);
-        waveBtn.setStyle(BUTTON_STYLE.replace("#23c4e8", "#ffd400"));
-
-        BorderPane root = new BorderPane(canvas);
-        root.setRight(side);
-        root.setStyle("-fx-background-color: #14161a;");
-
-        GraphicsContext g = canvas.getGraphicsContext2D();
+    /** Redraws the board and updates the labels every frame (runs on the JavaFX thread). */
+    private void startDrawing(GraphicsContext g) {
         new AnimationTimer() {
             @Override
             public void handle(long now) {
@@ -106,21 +109,19 @@ public class GameApp extends Application {
                 livesLabel.setText("Lives: " + state.getLives());
                 waveLabel.setText("Wave: " + state.getWave() + " / " + GameState.MAX_WAVES);
                 if (state.isGameOver()) {
-                    showMessage("Game over! You survived " + (state.getWave() - 1) + " waves.", true);
+                    showMessage("Game over! You survived " + (state.getWave() - 1) + " waves. Click New game to retry.", true);
                 } else if (state.isVictory()) {
                     showMessage("Victory! The Boss is down and all " + GameState.MAX_WAVES + " waves are cleared.", false);
                 }
             }
         }.start();
+    }
 
+    /** The game rules run on their own background thread (see GameLoop). */
+    private void startGameThread() {
         Thread gameThread = new Thread(loop, "game-loop");
-        gameThread.setDaemon(true);
+        gameThread.setDaemon(true);   // don't keep the program alive after the window closes
         gameThread.start();
-
-        stage.setTitle("Tower Defence");
-        stage.setScene(new Scene(root));
-        stage.setResizable(false);
-        stage.show();
     }
 
     @Override
@@ -154,6 +155,23 @@ public class GameApp extends Application {
         }
     }
 
+    private void onStartWave() {
+        try {
+            state.startWave();
+            showMessage("Wave " + state.getWave() + " incoming!", false);
+        } catch (GameException ex) {
+            showMessage(ex.getMessage(), true);
+        }
+    }
+
+    private void onNewGame() {
+        state.reset();
+        selectedRow = -1;
+        selectedCol = -1;
+        selectedLabel.setText("Click an empty tile to build");
+        showMessage("New game started", false);
+    }
+
     private void onUpgrade() {
         if (selectedRow < 0) {
             showMessage("Click a tower first", true);
@@ -177,7 +195,8 @@ public class GameApp extends Application {
 
     private void showMessage(String text, boolean error) {
         messageLabel.setText(text);
-        messageLabel.setTextFill(error ? HOSTILE : CYAN);
+        // inline style, because style.css already sets a text colour for every label
+        messageLabel.setStyle("-fx-text-fill: " + (error ? "#e0393e" : "#23c4e8") + ";");
     }
 
     private void draw(GraphicsContext g) {
@@ -202,7 +221,7 @@ public class GameApp extends Application {
             double radius = t.getRange() * CELL;
             double cx = selectedCol * CELL + CELL / 2.0;
             double cy = selectedRow * CELL + CELL / 2.0;
-            g.setFill(RANGE.deriveColor(0, 1, 1, 0.15));
+            g.setFill(Color.web("#ff8c1a", 0.15));   // same orange, 15% see-through
             g.fillOval(cx - radius, cy - radius, radius * 2, radius * 2);
             g.setStroke(RANGE);
             g.strokeOval(cx - radius, cy - radius, radius * 2, radius * 2);
@@ -257,7 +276,7 @@ public class GameApp extends Application {
                 break;
             case "Cannon":
                 double r = Cannon.SPLASH_RADIUS * CELL;   // blast circle shows the splash area
-                g.setFill(color.deriveColor(0, 1, 1, 0.35));
+                g.setFill(Color.web("#ff8c1a", 0.35));   // see-through orange blast
                 g.fillOval(toX - r, toY - r, r * 2, r * 2);
                 g.setLineWidth(2);
                 g.strokeOval(toX - r, toY - r, r * 2, r * 2);
@@ -299,7 +318,7 @@ public class GameApp extends Application {
             case "Orc":    color = Color.web("#8a1f24"); size = 28; break;
             case "Slime":  color = Color.web("#d9603b"); size = 24; break;
             case "Small Slime": color = Color.web("#e8845f"); size = 14; break;
-            case "Frost Golem": color = Color.web("#8fd3e8"); size = 34; break;
+            case "Frost Golem": color = Color.web("#8fd3e8"); size = 28; break;
             default:       color = Color.web("#2a0d10"); size = 40; break;
         }
         double cx = e.getX() * CELL + CELL / 2.0;

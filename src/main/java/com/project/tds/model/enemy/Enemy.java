@@ -78,30 +78,36 @@ public abstract class Enemy implements Targetable {
         return health > 0;
     }
 
+    /** Column position. Between two path cells, it blends from one to the next. */
     @Override
     public double getX() {
-        return interpolate(1);
+        int cell = (int) progress;                 // the path cell we're leaving
+        if (cell >= path.size() - 1) {
+            return path.get(path.size() - 1)[1];   // reached the end
+        }
+        double t = progress - cell;                // 0.0 = on this cell, 1.0 = on the next one
+        int fromCol = path.get(cell)[1];
+        int toCol = path.get(cell + 1)[1];
+        return fromCol + (toCol - fromCol) * t;
     }
 
+    /** Row position. Same idea as getX, but using the row. */
     @Override
     public double getY() {
-        return interpolate(0);
-    }
-
-    // index 0 = row, 1 = col; blends between the current cell and the next one
-    private double interpolate(int index) {
-        int i = (int) progress;
-        if (i >= path.size() - 1) {
-            return path.get(path.size() - 1)[index];
+        int cell = (int) progress;
+        if (cell >= path.size() - 1) {
+            return path.get(path.size() - 1)[0];
         }
-        double t = progress - i;
-        return path.get(i)[index] * (1 - t) + path.get(i + 1)[index] * t;
+        double t = progress - cell;
+        int fromRow = path.get(cell)[0];
+        int toRow = path.get(cell + 1)[0];
+        return fromRow + (toRow - fromRow) * t;
     }
 
     public String getName() { return name; }
     public double getSpeed() { return baseSpeed; }
 
-    /** Lets a subclass speed itself up (Frost Golem gets faster when hit). */
+    /** Lets a subclass change its own speed (Frost Golem speeds up when hurt). */
     protected void setSpeed(double speed) {
         this.baseSpeed = speed;
     }
