@@ -22,6 +22,12 @@ public abstract class Tower {
     private int level;
     private double cooldown;
 
+    // last shot, for drawing. volatile because the game thread writes these and the JavaFX thread reads them.
+    private static final double SHOT_FLASH_TIME = 0.15;
+    private volatile double shotTimer;
+    private volatile double lastShotX;
+    private volatile double lastShotY;
+
     protected Tower(String name, int row, int col, int cost, int upgradeCost,
                     int damage, double fireRate, double range) {
         this.name = name;
@@ -34,26 +40,37 @@ public abstract class Tower {
         this.range = range;
     }
 
-    /** Called every tick: count down, then shoot the enemy furthest along the path that's in range. */
+    /** Called every tick: count down, then pick a target and shoot it. */
     public void update(double dt, List<Enemy> enemies) {
         cooldown -= dt;
+        shotTimer -= dt;
         if (cooldown > 0) {
             return;
         }
+        Enemy target = chooseTarget(enemies);
+        if (target != null) {
+            attack(target, enemies);
+            cooldown = 1.0 / fireRate;
+            // remember where we shot so the UI can draw the shot for a moment
+            lastShotX = target.getX();
+            lastShotY = target.getY();
+            shotTimer = SHOT_FLASH_TIME;
+        }
+    }
+
+    /** Default: the enemy in range furthest along the path (closest to escaping). Mage overrides this. */
+    protected Enemy chooseTarget(List<Enemy> enemies) {
         Enemy target = null;
         for (Enemy e : enemies) {
             if (e.isAlive() && inRange(e) && (target == null || e.getProgress() > target.getProgress())) {
                 target = e;
             }
         }
-        if (target != null) {
-            attack(target);
-            cooldown = 1.0 / fireRate;
-        }
+        return target;
     }
 
-    /** Default attack is plain damage. Mage overrides this to also slow. */
-    protected void attack(Enemy target) {
+    /** Default attack is plain damage to one enemy. Mage overrides this to also slow, Cannon to splash. */
+    protected void attack(Enemy target, List<Enemy> enemies) {
         target.takeDamage(damage);
     }
 
@@ -84,4 +101,7 @@ public abstract class Tower {
     public int getUpgradeCost() { return upgradeCost; }
     public double getRange() { return range; }
     public int getLevel() { return level; }
+    public boolean isShowingShot() { return shotTimer > 0; }
+    public double getLastShotX() { return lastShotX; }
+    public double getLastShotY() { return lastShotY; }
 }

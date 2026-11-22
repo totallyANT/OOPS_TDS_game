@@ -4,6 +4,7 @@ import com.project.tds.engine.GameLoop;
 import com.project.tds.engine.GameState;
 import com.project.tds.model.GameException;
 import com.project.tds.model.enemy.Enemy;
+import com.project.tds.model.tower.Cannon;
 import com.project.tds.model.tower.Tower;
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
@@ -33,6 +34,7 @@ public class GameApp extends Application {
     private static final Color YELLOW = Color.web("#ffd400");
     private static final Color RANGE = Color.web("#ff8c1a");
     private static final Color HOSTILE = Color.web("#e0393e");
+    private static final Color MAGE_VIOLET = Color.web("#b07cff");
     private static final String TEXT_STYLE = "-fx-text-fill: #e8e8e8; -fx-font-size: 13px;";
     private static final String BUTTON_STYLE = "-fx-background-color: #23c4e8; -fx-text-fill: #14161a;"
             + " -fx-font-weight: bold; -fx-background-radius: 0;";
@@ -220,15 +222,55 @@ public class GameApp extends Application {
         for (Enemy e : state.getEnemies()) {
             drawEnemy(g, e);
         }
+
+        // shot flashes on top of everything
+        for (int r = 0; r < GameState.SIZE; r++) {
+            for (int c = 0; c < GameState.SIZE; c++) {
+                Tower t = state.getTower(r, c);
+                if (t != null && t.isShowingShot()) {
+                    drawShot(g, t);
+                }
+            }
+        }
+    }
+
+    private Color towerColor(Tower t) {
+        switch (t.getName()) {
+            case "Archer": return CYAN;
+            case "Cannon": return Color.web("#ff8c1a");
+            default:       return MAGE_VIOLET;
+        }
+    }
+
+    /** A short flash from the tower to whatever it just hit, so you can see every shot. */
+    private void drawShot(GraphicsContext g, Tower t) {
+        double fromX = t.getCol() * CELL + CELL / 2.0;
+        double fromY = t.getRow() * CELL + CELL / 2.0;
+        double toX = t.getLastShotX() * CELL + CELL / 2.0;
+        double toY = t.getLastShotY() * CELL + CELL / 2.0;
+        Color color = towerColor(t);
+        g.setStroke(color);
+        switch (t.getName()) {
+            case "Archer":
+                g.setLineWidth(2);   // thin arrow line
+                g.strokeLine(fromX, fromY, toX, toY);
+                break;
+            case "Cannon":
+                double r = Cannon.SPLASH_RADIUS * CELL;   // blast circle shows the splash area
+                g.setFill(color.deriveColor(0, 1, 1, 0.35));
+                g.fillOval(toX - r, toY - r, r * 2, r * 2);
+                g.setLineWidth(2);
+                g.strokeOval(toX - r, toY - r, r * 2, r * 2);
+                break;
+            default:
+                g.setLineWidth(5);   // thick magic beam
+                g.strokeLine(fromX, fromY, toX, toY);
+                break;
+        }
     }
 
     private void drawTower(GraphicsContext g, Tower t, boolean selected) {
-        Color color;
-        switch (t.getName()) {
-            case "Archer": color = CYAN; break;
-            case "Cannon": color = Color.web("#ff8c1a"); break;
-            default:       color = Color.web("#b07cff"); break;
-        }
+        Color color = towerColor(t);
         double x = t.getCol() * CELL + 15;
         double y = t.getRow() * CELL + 15;
         double size = CELL - 30;
@@ -257,15 +299,22 @@ public class GameApp extends Application {
             case "Orc":    color = Color.web("#8a1f24"); size = 28; break;
             case "Slime":  color = Color.web("#d9603b"); size = 24; break;
             case "Small Slime": color = Color.web("#e8845f"); size = 14; break;
+            case "Frost Golem": color = Color.web("#8fd3e8"); size = 34; break;
             default:       color = Color.web("#2a0d10"); size = 40; break;
         }
         double cx = e.getX() * CELL + CELL / 2.0;
         double cy = e.getY() * CELL + CELL / 2.0;
-        g.setFill(e.isSlowed() ? color.interpolate(Color.web("#b07cff"), 0.5) : color);
+        g.setFill(e.isSlowed() ? color.interpolate(MAGE_VIOLET, 0.5) : color);
         g.fillOval(cx - size / 2, cy - size / 2, size, size);
         g.setLineWidth(2);
         g.setStroke(HOSTILE);
         g.strokeOval(cx - size / 2, cy - size / 2, size, size);
+        if (e.isSlowed()) {
+            // violet ring around slowed enemies so the Mage's effect is easy to see
+            g.setLineWidth(3);
+            g.setStroke(MAGE_VIOLET);
+            g.strokeOval(cx - size / 2 - 5, cy - size / 2 - 5, size + 10, size + 10);
+        }
 
         // health bar
         double hpWidth = 30.0 * e.getHealth() / e.getMaxHealth();
