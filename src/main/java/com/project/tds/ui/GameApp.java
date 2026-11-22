@@ -256,6 +256,7 @@ public class GameApp extends Application {
             case "Goblin": color = Color.web("#c0484b"); size = 20; break;
             case "Orc":    color = Color.web("#8a1f24"); size = 28; break;
             case "Slime":  color = Color.web("#d9603b"); size = 24; break;
+            case "Small Slime": color = Color.web("#e8845f"); size = 14; break;
             default:       color = Color.web("#2a0d10"); size = 40; break;
         }
         double cx = e.getX() * CELL + CELL / 2.0;

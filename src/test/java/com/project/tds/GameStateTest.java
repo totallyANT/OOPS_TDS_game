@@ -2,6 +2,9 @@ package com.project.tds;
 
 import com.project.tds.engine.GameState;
 import com.project.tds.model.GameException;
+import com.project.tds.model.enemy.Enemy;
+import com.project.tds.model.enemy.Slime;
+import com.project.tds.model.tower.Tower;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -41,32 +44,55 @@ class GameStateTest {
     }
 
     @Test
-    void tenWavesThenBossThenVictory() throws GameException {
+    void allWavesThenBossThenVictory() throws GameException {
         GameState state = new GameState();
+        boolean sawBoss = false;
         for (int w = 1; w <= GameState.MAX_WAVES; w++) {
-            buildWhateverWeCanAfford(state);
+            buildAndUpgrade(state);
             state.startWave();
-            if (w == GameState.MAX_WAVES) {
-                state.update(0.02); // let the first enemy spawn
-                assertEquals(1, state.getEnemies().size());
-                assertEquals("Boss", state.getEnemies().get(0).getName());
-            }
             for (int i = 0; i < 5000 && state.isWaveRunning(); i++) {
                 state.update(0.02);
+                for (Enemy e : state.getEnemies()) {
+                    if (e.getName().equals("Boss")) {
+                        assertEquals(GameState.MAX_WAVES, w, "Boss should only appear in the last wave");
+                        sawBoss = true;
+                    }
+                }
             }
         }
+        assertTrue(sawBoss);
         assertTrue(state.isVictory());
-        assertThrows(GameException.class, state::startWave); // no wave 11
+        assertThrows(GameException.class, state::startWave); // no wave after the last one
     }
 
-    // Test helper: fill empty tiles next to the path with Cannons while gold lasts
-    private void buildWhateverWeCanAfford(GameState state) {
-        for (int r = 0; r < GameState.SIZE; r++) {
-            for (int c = 0; c < GameState.SIZE; c++) {
+    @Test
+    void slimeSplitsIntoTwoSmallSlimesThatDontSplitAgain() {
+        Slime slime = new Slime(new GameState().getPath());
+        assertEquals(2, slime.onDeath().size());
+        for (Enemy piece : slime.onDeath()) {
+            assertEquals("Small Slime", piece.getName());
+            assertTrue(piece.onDeath().isEmpty());
+        }
+    }
+
+    // Test helper: a sensible player. Builds a mix of towers on tiles next to the path, then upgrades them.
+    private static final int[][] SPOTS = {{2, 2}, {4, 2}, {3, 4}, {2, 4}, {4, 4}, {0, 2}, {6, 4}, {3, 2}, {3, 0}, {2, 6}};
+    private static final String[] TYPES = {"Archer", "Cannon", "Mage"};
+
+    private void buildAndUpgrade(GameState state) {
+        for (int i = 0; i < SPOTS.length; i++) {
+            try {
+                state.placeTower(TYPES[i % 3], SPOTS[i][0], SPOTS[i][1]);
+            } catch (GameException ignored) {
+                // occupied or not enough gold: skip
+            }
+        }
+        for (int[] spot : SPOTS) {
+            for (int u = 0; u < Tower.MAX_LEVEL; u++) {
                 try {
-                    state.placeTower("Cannon", r, c);
+                    state.upgradeTower(spot[0], spot[1]);
                 } catch (GameException ignored) {
-                    // path tile, occupied or not enough gold: just skip it
+                    // no tower, max level or not enough gold: skip
                 }
             }
         }

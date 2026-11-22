@@ -12,6 +12,7 @@ import com.project.tds.model.tower.Mage;
 import com.project.tds.model.tower.Tower;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 
@@ -36,8 +37,11 @@ public class GameState {
     private final ArrayList<Enemy> enemies = new ArrayList<>();
     private final ArrayList<Enemy> spawnQueue = new ArrayList<>();
 
-    public static final int MAX_WAVES = 10;
+    public static final int MAX_WAVES = 10;           // wave 10 = horde, then the Boss
+    private static final double HORDE_SPAWN_GAP = 0.45;
+    private static final double HEALTH_GROWTH = 0.20; // +20% enemy health per wave
 
+    private double spawnGap = SPAWN_GAP;
     private int gold = 150;
     private int lives = 20;
     private int wave = 0;
@@ -100,13 +104,26 @@ public class GameState {
             throw new GameException("All waves cleared!");
         }
         wave++;
+        spawnGap = SPAWN_GAP;
         if (wave == MAX_WAVES) {
-            spawnQueue.add(new Boss(path)); // final wave: the Boss, alone
+            // final wave: a fast horde of everything, then the Boss walks in last
+            for (int i = 0; i < 14; i++) spawn(new Goblin(path));
+            for (int i = 0; i < 10; i++) spawn(new Orc(path));
+            for (int i = 0; i < 8; i++) spawn(new Slime(path));
+            Collections.shuffle(spawnQueue);
+            spawn(new Boss(path));
+            spawnGap = HORDE_SPAWN_GAP;
             return;
         }
-        for (int i = 0; i < 4 + wave; i++) spawnQueue.add(new Goblin(path));
-        for (int i = 0; i < wave / 2; i++) spawnQueue.add(new Orc(path));
-        for (int i = 0; i < wave / 3; i++) spawnQueue.add(new Slime(path));
+        for (int i = 0; i < 4 + 2 * wave; i++) spawn(new Goblin(path));
+        for (int i = 0; i < wave; i++) spawn(new Orc(path));
+        for (int i = 0; i < wave / 2; i++) spawn(new Slime(path));
+    }
+
+    /** Queue an enemy, with extra health the later the wave. */
+    private void spawn(Enemy e) {
+        e.scaleHealth(1 + HEALTH_GROWTH * (wave - 1));
+        spawnQueue.add(e);
     }
 
     /** One tick of the game. dt = seconds since last tick. */
@@ -118,7 +135,7 @@ public class GameState {
         spawnTimer -= dt;
         if (!spawnQueue.isEmpty() && spawnTimer <= 0) {
             enemies.add(spawnQueue.remove(0));
-            spawnTimer = SPAWN_GAP;
+            spawnTimer = spawnGap;
         }
 
         for (Enemy e : enemies) {
@@ -130,17 +147,20 @@ public class GameState {
             }
         }
 
+        ArrayList<Enemy> newcomers = new ArrayList<>(); // e.g. small slimes from a split
         Iterator<Enemy> it = enemies.iterator();
         while (it.hasNext()) {
             Enemy e = it.next();
             if (!e.isAlive()) {
                 gold += e.getReward();
+                newcomers.addAll(e.onDeath());
                 it.remove();
             } else if (e.reachedEnd()) {
                 lives = Math.max(0, lives - e.getLivesCost());
                 it.remove();
             }
         }
+        enemies.addAll(newcomers); // added after the loop so we don't change the list while iterating
     }
 
     public synchronized boolean isGameOver() { return lives <= 0; }
@@ -152,6 +172,7 @@ public class GameState {
     public synchronized int getWave() { return wave; }
     public synchronized Tower getTower(int row, int col) { return towers[row][col]; }
     public boolean isPath(int row, int col) { return pathTiles[row][col]; }
+    public List<int[]> getPath() { return path; }
 
     /** Copy so the UI can draw without holding the lock or tripping over removals. */
     public synchronized List<Enemy> getEnemies() { return new ArrayList<>(enemies); }

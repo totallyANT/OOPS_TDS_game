@@ -2,12 +2,13 @@ package com.project.tds.model.enemy;
 
 import com.project.tds.model.Targetable;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /** Base class for every enemy. Walks along the path; subclasses only change stats or special rules. */
 public abstract class Enemy implements Targetable {
     private final String name;
-    private final int maxHealth;
+    private int maxHealth;
     private final double baseSpeed;   // cells per second
     private final int reward;         // gold on kill
     private final List<int[]> path;   // each entry is {row, col}
@@ -23,6 +24,12 @@ public abstract class Enemy implements Targetable {
         this.baseSpeed = baseSpeed;
         this.reward = reward;
         this.path = path;
+    }
+
+    /** Makes this enemy tougher. Used to scale enemies up in later waves. */
+    public void scaleHealth(double factor) {
+        maxHealth = (int) Math.round(maxHealth * factor);
+        health = maxHealth;
     }
 
     public void move(double dt) {
@@ -45,6 +52,20 @@ public abstract class Enemy implements Targetable {
 
     public void applySlow(double seconds) {
         slowTimer = Math.max(slowTimer, seconds);
+    }
+
+    /** Enemies that appear when this one dies. Most leave nothing; Slime overrides this to split. */
+    public List<Enemy> onDeath() {
+        return new ArrayList<>();
+    }
+
+    /** Puts this enemy at a given point on the path (used when spawning split pieces). */
+    protected void setProgress(double progress) {
+        this.progress = Math.max(0, progress);
+    }
+
+    protected List<int[]> getPath() {
+        return path;
     }
 
     /** How many lives the player loses if this enemy gets through. */

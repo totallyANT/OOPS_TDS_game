@@ -8,7 +8,7 @@ A tower defence game written in Java with JavaFX, made for our Object Oriented P
 Enemies walk along a winding path on a 7x7 grid. You build towers on the empty tiles beside the path to stop them before they reach the end.
 
 - You start with **150 gold** and **20 lives**.
-- There are **10 waves**. Waves 1 to 9 get bigger each time, and **wave 10 is a single Boss**.
+- There are **10 waves**. Waves 1 to 9 get bigger and tougher each time. **Wave 10 is the finale**: a fast horde of 32 enemies, with the **Boss** walking in last.
 - Killing an enemy gives you gold. An enemy that reaches the end takes away lives (the Boss takes 5).
 - Clear all 10 waves to win. Hit 0 lives and you lose.
 
@@ -35,10 +35,10 @@ Towers always shoot the enemy furthest along the path, since it is closest to es
 |--------|--------|-----------|-------------------------------------------------------|
 | Goblin | 30     | Fast      | The basic enemy                                       |
 | Orc    | 80     | Slow      | Tanky                                                 |
-| Slime  | 50     | Medium    | Slows only last half as long on it                    |
-| Boss   | 400    | Very slow | Armour (5 less damage per hit), costs 5 lives, wave 10 only |
+| Slime  | 50     | Medium    | Slows only last half as long on it. **Splits into 2 Small Slimes** (15 health, don't split again) when it dies |
+| Boss   | 400    | Very slow | Armour (5 less damage per hit), costs 5 lives, final wave only |
 
-Wave *n* (for 1 to 9) has `4 + n` Goblins, `n / 2` Orcs and `n / 3` Slimes.
+Wave *n* (for 1 to 9) has `4 + 2n` Goblins, `n` Orcs and `n / 2` Slimes. Wave 10 is a shuffled horde of 14 Goblins, 10 Orcs and 8 Slimes, spawning almost twice as fast, followed by the Boss. Every enemy gets **+20% health per wave**, so the Boss has 1120 health. The health numbers in the table are wave-1 values.
 
 ## How to run
 
@@ -88,7 +88,7 @@ Both threads share one `GameState`, so its methods are `synchronized`. That way 
 | Classes and objects | Every tower, enemy and the game state is an object, e.g. `new Archer(row, col)` |
 | Encapsulation and constructors | Fields are `private` and change only through methods like `takeDamage()` and `placeTower()`. Subclasses pass their stats up through `super(...)` constructors |
 | Inheritance | `Goblin`, `Orc`, `Slime`, `Boss` extend `Enemy`. `Archer`, `Cannon`, `Mage` extend `Tower` |
-| Polymorphism | The game calls `tower.attack(enemy)` without knowing the tower type, and `Mage` overrides it to also slow. `Boss` overrides `takeDamage()` (armour) and `getLivesCost()`. `Slime` overrides `applySlow()` |
+| Polymorphism | The game calls `tower.attack(enemy)` without knowing the tower type, and `Mage` overrides it to also slow. `Boss` overrides `takeDamage()` (armour) and `getLivesCost()`. `Slime` overrides `applySlow()` and `onDeath()` (to split into two) |
 | Arrays / ArrayList of objects | The grid is a `Tower[7][7]` array, and the path is a `boolean[][]`. Enemies and the spawn queue are `ArrayList<Enemy>` because their size keeps changing |
 | Method design | Small methods that each do one job: `placeTower`, `upgradeTower`, `startWave`, `update`, `inRange` |
 | Abstract classes and interfaces | `Enemy` and `Tower` are abstract (`Tower.applyUpgrade()` has no body, so each tower must define it). `Targetable` is an interface that `Enemy` implements |
