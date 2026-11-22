@@ -3,6 +3,7 @@ package com.project.tds.engine;
 import com.project.tds.model.GameException;
 import com.project.tds.model.enemy.Boss;
 import com.project.tds.model.enemy.Enemy;
+import com.project.tds.model.enemy.FrostGolem;
 import com.project.tds.model.enemy.Goblin;
 import com.project.tds.model.enemy.Orc;
 import com.project.tds.model.enemy.Slime;
@@ -39,10 +40,10 @@ public class GameState {
 
     public static final int MAX_WAVES = 10;           // wave 10 = horde, then the Boss
     private static final double HORDE_SPAWN_GAP = 0.45;
-    private static final double HEALTH_GROWTH = 0.20; // +20% enemy health per wave
+    private static final double HEALTH_GROWTH = 0.25; // +25% enemy health per wave
 
     private double spawnGap = SPAWN_GAP;
-    private int gold = 150;
+    private int gold = 130;
     private int lives = 20;
     private int wave = 0;
     private double spawnTimer = 0;
@@ -110,6 +111,7 @@ public class GameState {
             for (int i = 0; i < 14; i++) spawn(new Goblin(path));
             for (int i = 0; i < 10; i++) spawn(new Orc(path));
             for (int i = 0; i < 8; i++) spawn(new Slime(path));
+            for (int i = 0; i < 2; i++) spawn(new FrostGolem(path));
             Collections.shuffle(spawnQueue);
             spawn(new Boss(path));
             spawnGap = HORDE_SPAWN_GAP;
@@ -118,6 +120,7 @@ public class GameState {
         for (int i = 0; i < 4 + 2 * wave; i++) spawn(new Goblin(path));
         for (int i = 0; i < wave; i++) spawn(new Orc(path));
         for (int i = 0; i < wave / 2; i++) spawn(new Slime(path));
+        for (int i = 0; i < wave / 3; i++) spawn(new FrostGolem(path)); // from wave 3
     }
 
     /** Queue an enemy, with extra health the later the wave. */

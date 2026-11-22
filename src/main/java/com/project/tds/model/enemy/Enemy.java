@@ -9,7 +9,7 @@ import java.util.List;
 public abstract class Enemy implements Targetable {
     private final String name;
     private int maxHealth;
-    private final double baseSpeed;   // cells per second
+    private double baseSpeed;         // cells per second
     private final int reward;         // gold on kill
     private final List<int[]> path;   // each entry is {row, col}
 
@@ -99,6 +99,12 @@ public abstract class Enemy implements Targetable {
     }
 
     public String getName() { return name; }
+    public double getSpeed() { return baseSpeed; }
+
+    /** Lets a subclass speed itself up (Frost Golem gets faster when hit). */
+    protected void setSpeed(double speed) {
+        this.baseSpeed = speed;
+    }
     public int getHealth() { return health; }
     public int getMaxHealth() { return maxHealth; }
     public int getReward() { return reward; }

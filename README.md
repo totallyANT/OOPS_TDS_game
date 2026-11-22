@@ -7,8 +7,8 @@ A tower defence game written in Java with JavaFX, made for our Object Oriented P
 
 Enemies walk along a winding path on a 7x7 grid. You build towers on the empty tiles beside the path to stop them before they reach the end.
 
-- You start with **150 gold** and **20 lives**.
-- There are **10 waves**. Waves 1 to 9 get bigger and tougher each time. **Wave 10 is the finale**: a fast horde of 32 enemies, with the **Boss** walking in last.
+- You start with **130 gold** and **20 lives**.
+- There are **10 waves**. Waves 1 to 9 get bigger and tougher each time. **Wave 10 is the finale**: a fast horde of 34 enemies, with the **Boss** walking in last.
 - Killing an enemy gives you gold. An enemy that reaches the end takes away lives (the Boss takes 5).
 - Clear all 10 waves to win. Hit 0 lives and you lose.
 
@@ -23,11 +23,13 @@ Enemies walk along a winding path on a 7x7 grid. You build towers on the empty t
 
 | Tower  | Cost | Strength                         | Each upgrade (3 max)   |
 |--------|------|----------------------------------|------------------------|
-| Archer | 50   | Fast shots, light damage         | Shoots faster          |
-| Cannon | 80   | Slow shots, heavy damage         | More damage            |
-| Mage   | 70   | Medium damage, slows the enemy   | Slow lasts longer      |
+| Archer | 50   | Fast shots, light damage. Nearly useless against the Boss's armour | Shoots faster          |
+| Cannon | 80   | Slow shots, heavy damage. **Splash**: enemies near the target take half damage | More damage            |
+| Mage   | 70   | Medium damage, slows the enemy for 2.5s (half speed). Aims at enemies that aren't slowed yet | Slow lasts 1s longer   |
 
-Towers always shoot the enemy furthest along the path, since it is closest to escaping.
+Towers shoot the enemy furthest along the path, since it is closest to escaping. The Mage is the exception: it aims at the furthest enemy that isn't slowed yet, so it spreads its slow across the group. Every shot is drawn briefly on the board (arrow line, cannon blast circle, magic beam), and slowed enemies get a violet ring.
+
+No single tower type can win on its own. You need a mix, and Cannons with Mages work especially well together: Mages slow enemies so they bunch up, and Cannons splash the whole group. Watch out for Frost Golems, though. Mages can't slow them, so you need enough raw damage to bring them down before they speed up.
 
 ### Enemies
 
@@ -36,9 +38,10 @@ Towers always shoot the enemy furthest along the path, since it is closest to es
 | Goblin | 30     | Fast      | The basic enemy                                       |
 | Orc    | 80     | Slow      | Tanky                                                 |
 | Slime  | 50     | Medium    | Slows only last half as long on it. **Splits into 2 Small Slimes** (15 health, don't split again) when it dies |
+| Frost Golem | 250 | Slow, speeds up when hurt | **Can't be slowed.** Gets faster the more hurt it is, up to double speed. Appears from wave 3 |
 | Boss   | 400    | Very slow | Armour (5 less damage per hit), costs 5 lives, final wave only |
 
-Wave *n* (for 1 to 9) has `4 + 2n` Goblins, `n` Orcs and `n / 2` Slimes. Wave 10 is a shuffled horde of 14 Goblins, 10 Orcs and 8 Slimes, spawning almost twice as fast, followed by the Boss. Every enemy gets **+20% health per wave**, so the Boss has 1120 health. The health numbers in the table are wave-1 values.
+Wave *n* (for 1 to 9) has `4 + 2n` Goblins, `n` Orcs and `n / 2` Slimes. Waves from 3 onwards also have `n / 3` Frost Golems. Wave 10 is a shuffled horde of 14 Goblins, 10 Orcs, 8 Slimes and 2 Frost Golems, spawning almost twice as fast, followed by the Boss. Every enemy gets **+25% health per wave**, so the Boss has 1300 health. The health numbers in the table are wave-1 values.
 
 ## How to run
 
@@ -62,7 +65,7 @@ src/main/java/com/project/tds
 ├── model/
 │   ├── Targetable.java     interface: anything a tower can aim at
 │   ├── GameException.java  our own exception for rule breaks
-│   ├── enemy/              Enemy (abstract), Goblin, Orc, Slime, Boss
+│   ├── enemy/              Enemy (abstract), Goblin, Orc, Slime, FrostGolem, Boss
 │   └── tower/              Tower (abstract), Archer, Cannon, Mage
 ├── engine/
 │   ├── GameState.java      the whole game: grid, towers, enemies, gold, lives, waves
@@ -87,8 +90,8 @@ Both threads share one `GameState`, so its methods are `synchronized`. That way 
 |---|---|
 | Classes and objects | Every tower, enemy and the game state is an object, e.g. `new Archer(row, col)` |
 | Encapsulation and constructors | Fields are `private` and change only through methods like `takeDamage()` and `placeTower()`. Subclasses pass their stats up through `super(...)` constructors |
-| Inheritance | `Goblin`, `Orc`, `Slime`, `Boss` extend `Enemy`. `Archer`, `Cannon`, `Mage` extend `Tower` |
-| Polymorphism | The game calls `tower.attack(enemy)` without knowing the tower type, and `Mage` overrides it to also slow. `Boss` overrides `takeDamage()` (armour) and `getLivesCost()`. `Slime` overrides `applySlow()` and `onDeath()` (to split into two) |
+| Inheritance | `Goblin`, `Orc`, `Slime`, `FrostGolem`, `Boss` extend `Enemy`. `Archer`, `Cannon`, `Mage` extend `Tower` |
+| Polymorphism | The game calls `tower.attack(...)` without knowing the tower type. `Mage` overrides it to also slow, and `Cannon` overrides it to splash nearby enemies. `Mage` also overrides `chooseTarget()` to pick enemies that aren't slowed yet. `Boss` overrides `takeDamage()` (armour) and `getLivesCost()`. `FrostGolem` overrides `applySlow()` (does nothing) and `takeDamage()` (speeds up when hurt). `Slime` overrides `applySlow()` and `onDeath()` (to split into two) |
 | Arrays / ArrayList of objects | The grid is a `Tower[7][7]` array, and the path is a `boolean[][]`. Enemies and the spawn queue are `ArrayList<Enemy>` because their size keeps changing |
 | Method design | Small methods that each do one job: `placeTower`, `upgradeTower`, `startWave`, `update`, `inRange` |
 | Abstract classes and interfaces | `Enemy` and `Tower` are abstract (`Tower.applyUpgrade()` has no body, so each tower must define it). `Targetable` is an interface that `Enemy` implements |
