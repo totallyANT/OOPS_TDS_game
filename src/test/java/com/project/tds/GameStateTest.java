@@ -82,8 +82,24 @@ class GameStateTest {
         golem.applySlow(10);
         assertFalse(golem.isSlowed(), "slows should do nothing to a Frost Golem");
         double startSpeed = golem.getSpeed();
-        golem.takeDamage(golem.getMaxHealth() / 2);   // half health
-        assertEquals(startSpeed * 1.5, golem.getSpeed(), 0.001);
+        golem.takeDamage(golem.getMaxHealth() / 2);   // half health -> +25% speed
+        assertEquals(startSpeed * 1.25, golem.getSpeed(), 0.001);
+    }
+
+    @Test
+    void resetStartsAFreshGame() throws GameException {
+        GameState state = new GameState();
+        state.placeTower("Cannon", 1, 2);
+        state.startWave();
+        for (int i = 0; i < 100; i++) {
+            state.update(0.02);
+        }
+        state.reset();
+        assertEquals(GameState.START_GOLD, state.getGold());
+        assertEquals(GameState.START_LIVES, state.getLives());
+        assertEquals(0, state.getWave());
+        assertNull(state.getTower(1, 2));
+        assertFalse(state.isWaveRunning());
     }
 
     @Test

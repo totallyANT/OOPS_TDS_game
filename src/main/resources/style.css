@@ -1,0 +1,43 @@
+/* Look of the side panel. The game board itself is drawn in GameApp.draw(). */
+
+.root {
+    -fx-background-color: #14161a;
+}
+
+.side-panel {
+    -fx-background-color: #1b1e23;
+    -fx-border-color: #23c4e8;     /* cyan stripe on the left edge */
+    -fx-border-width: 0 0 0 3;
+}
+
+.label, .radio-button {
+    -fx-text-fill: #e8e8e8;
+    -fx-font-size: 13px;
+}
+
+.gold {
+    -fx-text-fill: #ffd400;
+    -fx-font-weight: bold;
+}
+
+.heading {
+    -fx-text-fill: #23c4e8;
+    -fx-font-weight: bold;
+    -fx-font-size: 14px;
+}
+
+.button {
+    -fx-background-color: #23c4e8;
+    -fx-text-fill: #14161a;
+    -fx-font-weight: bold;
+    -fx-background-radius: 0;
+}
+
+.wave-button {
+    -fx-background-color: #ffd400;
+}
+
+.new-game-button {
+    -fx-background-color: #3c424b;
+    -fx-text-fill: #e8e8e8;
+}

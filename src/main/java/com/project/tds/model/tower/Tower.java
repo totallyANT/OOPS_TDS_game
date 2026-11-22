@@ -22,7 +22,9 @@ public abstract class Tower {
     private int level;
     private double cooldown;
 
-    // last shot, for drawing. volatile because the game thread writes these and the JavaFX thread reads them.
+    // Where the last shot went, so the UI can draw it for a moment.
+    // "volatile" = the game thread writes these and the JavaFX thread reads them,
+    // so Java must always read the latest value instead of a stale cached copy.
     private static final double SHOT_FLASH_TIME = 0.15;
     private volatile double shotTimer;
     private volatile double lastShotX;
