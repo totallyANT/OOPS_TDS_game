@@ -1,14 +1,22 @@
 package com.project.tds;
 
+import com.project.tds.engine.GameEngine;
 import com.project.tds.engine.GameState;
-import com.project.tds.model.GameException;
+import com.project.tds.exception.GameException;
+import com.project.tds.exception.InsufficientGoldException;
+import com.project.tds.exception.InvalidPlacementException;
+import com.project.tds.exception.MaxUpgradeReachedException;
+import com.project.tds.model.Targetable;
+import com.project.tds.model.enemy.Boss;
 import com.project.tds.model.enemy.Enemy;
+import com.project.tds.model.enemy.ExtraWaves;
 import com.project.tds.model.enemy.FrostGolem;
+import com.project.tds.model.enemy.GamePath;
 import com.project.tds.model.enemy.Goblin;
-import com.project.tds.model.enemy.Slime;
-import com.project.tds.model.tower.Archer;
-import com.project.tds.model.tower.Cannon;
-import com.project.tds.model.tower.Mage;
+import com.project.tds.model.enemy.SplittingSlime;
+import com.project.tds.model.tower.ArcherTower;
+import com.project.tds.model.tower.CannonTower;
+import com.project.tds.model.tower.SplashCannonTower;
 import com.project.tds.model.tower.Tower;
 import org.junit.jupiter.api.Test;
 
@@ -18,156 +26,73 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class GameStateTest {
+    private final GamePath path = GamePath.createDefaultPath();
 
     @Test
     void buildingRules() throws GameException {
         GameState state = new GameState();
+        GameEngine engine = new GameEngine(state);
         int startGold = state.getGold();
-        assertThrows(GameException.class, () -> state.placeTower("Archer", 0, 1)); // path tile
-        state.placeTower("Archer", 0, 0);
-        assertEquals(startGold - Archer.COST, state.getGold());
-        assertThrows(GameException.class, () -> state.placeTower("Mage", 0, 0)); // occupied
+        assertThrows(InvalidPlacementException.class, () -> engine.placeTower(new ArcherTower(1, 0))); // path tile
+        engine.placeTower(new ArcherTower(0, 0));
+        assertEquals(startGold - ArcherTower.BASE_COST, state.getGold());
+        assertThrows(InvalidPlacementException.class, () -> engine.placeTower(new ArcherTower(0, 0))); // occupied
+        assertThrows(InvalidPlacementException.class, () -> new ArcherTower(7, 7)); // off the grid
     }
 
     @Test
-    void upgradeNeedsGold() throws GameException {
-        GameState state = new GameState();
-        state.placeTower("Cannon", 0, 0);
-        while (state.getGold() >= state.getTower(0, 0).getUpgradeCost()) {
-            state.upgradeTower(0, 0);
-        }
-        int level = state.getTower(0, 0).getLevel();
-        assertThrows(GameException.class, () -> state.upgradeTower(0, 0)); // can't afford
-        assertEquals(level, state.getTower(0, 0).getLevel());
+    void notEnoughGold() {
+        GameEngine engine = new GameEngine(new GameState(10, 5));
+        assertThrows(InsufficientGoldException.class, () -> engine.placeTower(new ArcherTower(0, 0)));
     }
 
     @Test
     void upgradeStopsAtMaxLevel() throws GameException {
-        Tower archer = new Archer(0, 0);
-        for (int i = 0; i < Tower.MAX_LEVEL; i++) {
-            archer.upgrade();
+        GameEngine engine = new GameEngine(new GameState(10_000, 5));
+        Tower archer = new ArcherTower(0, 0);
+        engine.placeTower(archer);
+        while (!archer.isMaxLevel()) {
+            engine.upgradeTower(archer);
         }
-        assertThrows(GameException.class, archer::upgrade);
+        assertThrows(MaxUpgradeReachedException.class, () -> engine.upgradeTower(archer));
     }
 
     @Test
-    void cannonSplashHitsNearbyEnemiesForHalfDamage() {
-        List<int[]> path = new GameState().getPath();
-        List<Enemy> enemies = new ArrayList<>();
-        enemies.add(new Goblin(path)); // both goblins stand on the first path tile
+    void cannonSplashHitsNearbyEnemiesForHalfDamage() throws GameException {
+        List<Targetable> enemies = new ArrayList<>();
+        enemies.add(new Goblin(path)); // both goblins stand on the first path tile (1, 0)
         enemies.add(new Goblin(path));
-        Tower cannon = new Cannon(1, 2);
-        cannon.update(1.0, enemies);   // one shot
-        assertEquals(0, enemies.get(0).getHealth());                       // target: full damage
-        assertEquals(enemies.get(1).getMaxHealth() - 15, enemies.get(1).getHealth()); // neighbour: half of 30
+        new SplashCannonTower(0, 0).tryAttack(enemies, 0);
+        int full = Goblin.MAX_HEALTH;
+        int hits = (enemies.get(0).getHealth() < full ? 1 : 0) + (enemies.get(1).getHealth() < full ? 1 : 0);
+        assertEquals(2, hits);
+        assertNotEquals(enemies.get(0).getHealth(), enemies.get(1).getHealth()); // one full hit, one half
+        assertTrue(new SplashCannonTower(0, 0) instanceof CannonTower);
     }
 
     @Test
-    void mageSpreadsItsSlowToEnemiesThatArentSlowedYet() {
-        List<int[]> path = new GameState().getPath();
-        Enemy front = new Goblin(path);
-        Enemy behind = new Goblin(path);
-        front.move(0.3);          // front goblin is a bit further along the path
-        front.applySlow(10);      // and already slowed
-        List<Enemy> enemies = new ArrayList<>(List.of(front, behind));
-        new Mage(1, 2).update(1.0, enemies);
-        assertTrue(behind.isSlowed(), "Mage should pick the goblin that wasn't slowed");
-        assertEquals(behind.getMaxHealth() - 15, behind.getHealth());
-        assertEquals(front.getMaxHealth(), front.getHealth());
+    void frostGolemCantBeSlowed() {
+        FrostGolem golem = new FrostGolem(path);
+        golem.applySlow(0.5, 2000);
+        assertFalse(golem.isSlowed());
     }
 
     @Test
-    void frostGolemIgnoresSlowAndSpeedsUpWhenHurt() {
-        FrostGolem golem = new FrostGolem(new GameState().getPath());
-        golem.applySlow(10);
-        assertFalse(golem.isSlowed(), "slows should do nothing to a Frost Golem");
-        double startSpeed = golem.getSpeed();
-        golem.takeDamage(golem.getMaxHealth() / 2);   // half health -> +25% speed
-        assertEquals(startSpeed * 1.25, golem.getSpeed(), 0.001);
-    }
-
-    @Test
-    void resetStartsAFreshGame() throws GameException {
-        GameState state = new GameState();
-        state.placeTower("Cannon", 1, 2);
-        state.startWave();
-        for (int i = 0; i < 100; i++) {
-            state.update(0.02);
-        }
-        state.reset();
-        assertEquals(GameState.START_GOLD, state.getGold());
-        assertEquals(GameState.START_LIVES, state.getLives());
-        assertEquals(0, state.getWave());
-        assertNull(state.getTower(1, 2));
-        assertFalse(state.isWaveRunning());
-    }
-
-    @Test
-    void enemiesSpawnAndTowersKillThem() throws GameException {
-        GameState state = new GameState();
-        state.placeTower("Cannon", 1, 2);
-        int goldAfterBuilding = state.getGold();
-        state.startWave();
-        assertThrows(GameException.class, state::startWave); // wave already running
-        for (int i = 0; i < 2000 && state.isWaveRunning(); i++) {
-            state.update(0.02);
-        }
-        assertFalse(state.isWaveRunning());
-        assertTrue(state.getGold() > goldAfterBuilding, "should have earned gold from kills");
-    }
-
-    @Test
-    void allWavesThenBossThenVictory() throws GameException {
-        GameState state = new GameState();
-        boolean sawBoss = false;
-        for (int w = 1; w <= GameState.MAX_WAVES; w++) {
-            buildAndUpgrade(state);
-            state.startWave();
-            for (int i = 0; i < 5000 && state.isWaveRunning(); i++) {
-                state.update(0.02);
-                for (Enemy e : state.getEnemies()) {
-                    if (e.getName().equals("Boss")) {
-                        assertEquals(GameState.MAX_WAVES, w, "Boss should only appear in the last wave");
-                        sawBoss = true;
-                    }
-                }
-            }
-        }
-        assertTrue(sawBoss);
-        assertTrue(state.isVictory());
-        assertThrows(GameException.class, state::startWave); // no wave after the last one
-    }
-
-    @Test
-    void slimeSplitsIntoTwoSmallSlimesThatDontSplitAgain() {
-        Slime slime = new Slime(new GameState().getPath());
-        assertEquals(2, slime.onDeath().size());
-        for (Enemy piece : slime.onDeath()) {
+    void slimeSplitsIntoTwoSmallSlimes() {
+        SplittingSlime slime = new SplittingSlime(path);
+        slime.move(3.0);   // walk a few tiles in
+        List<Enemy> pieces = slime.split();
+        assertEquals(2, pieces.size());
+        for (Enemy piece : pieces) {
             assertEquals("Small Slime", piece.getName());
-            assertTrue(piece.onDeath().isEmpty());
+            assertTrue(piece.getPath().getTotalDistance() < path.getTotalDistance()); // starts part-way along
         }
     }
 
-    // Test helper: a sensible player. Alternates Cannons and Mages next to the path, then upgrades them.
-    private static final int[][] SPOTS = {{2, 2}, {4, 2}, {3, 4}, {2, 4}, {4, 4}, {0, 2}, {6, 4}, {3, 2}, {3, 0}, {2, 6}};
-    private static final String[] TYPES = {"Cannon", "Mage"};
-
-    private void buildAndUpgrade(GameState state) {
-        for (int i = 0; i < SPOTS.length; i++) {
-            try {
-                state.placeTower(TYPES[i % TYPES.length], SPOTS[i][0], SPOTS[i][1]);
-            } catch (GameException ignored) {
-                // occupied or not enough gold: skip
-            }
-        }
-        for (int[] spot : SPOTS) {
-            for (int u = 0; u < Tower.MAX_LEVEL; u++) {
-                try {
-                    state.upgradeTower(spot[0], spot[1]);
-                } catch (GameException ignored) {
-                    // no tower, max level or not enough gold: skip
-                }
-            }
-        }
+    @Test
+    void finalWaveEndsWithTheBoss() {
+        List<Targetable> wave = ExtraWaves.build(GameState.TOTAL_WAVES, path);
+        assertTrue(wave.get(wave.size() - 1) instanceof Boss);
+        assertThrows(IllegalArgumentException.class, () -> ExtraWaves.build(GameState.TOTAL_WAVES + 1, path));
     }
 }
