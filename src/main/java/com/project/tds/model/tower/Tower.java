@@ -1,12 +1,12 @@
 package com.project.tds.model.tower;
 
-import com.project.tds.model.GameException;
+import com.project.tds.engine.GameState;
+import com.project.tds.exception.InvalidPlacementException;
+import com.project.tds.exception.MaxUpgradeReachedException;
 import com.project.tds.model.Targetable;
-import com.project.tds.model.enemy.Enemy;
 
 import java.util.List;
 
-/** Base class for all towers. Handles aiming and cooldown; subclasses decide how upgrades work. */
 public abstract class Tower {
     public static final int MAX_LEVEL = 3;
 
@@ -14,96 +14,138 @@ public abstract class Tower {
     private final int row;
     private final int col;
     private final int cost;
-    private final int upgradeCost;
-    private final double range;       // in cells
 
+    protected int level;
+    protected int upgradeCost;
     protected int damage;
-    protected double fireRate;        // shots per second
-    private int level;
-    private double cooldown;
+    protected double range;
+    protected double fireRate;
+    private long lastShotTimeMs;
+    private TargetingStrategy targetingStrategy;
 
-    // Where the last shot went, so the UI can draw it for a moment.
-    // "volatile" = the game thread writes these and the JavaFX thread reads them,
-    // so Java must always read the latest value instead of a stale cached copy.
-    private static final double SHOT_FLASH_TIME = 0.15;
-    private volatile double shotTimer;
-    private volatile double lastShotX;
-    private volatile double lastShotY;
-
-    protected Tower(String name, int row, int col, int cost, int upgradeCost,
-                    int damage, double fireRate, double range) {
+    public Tower(String name, int row, int col, int cost, int upgradeCost,
+                 int damage, double range, double fireRate) throws InvalidPlacementException {
+        if (row < 0 || row >= GameState.GRID_SIZE || col < 0 || col >= GameState.GRID_SIZE) {
+            throw new InvalidPlacementException(row, col, "Position is outside the 7x7 grid.");
+        }
         this.name = name;
         this.row = row;
         this.col = col;
         this.cost = cost;
         this.upgradeCost = upgradeCost;
         this.damage = damage;
-        this.fireRate = fireRate;
         this.range = range;
+        this.fireRate = fireRate;
+        this.level = 1;
+        this.lastShotTimeMs = -1L;
+        this.targetingStrategy = TargetingStrategy.NEAREST;
     }
 
-    /** Called every tick: count down, then pick a target and shoot it. */
-    public void update(double dt, List<Enemy> enemies) {
-        cooldown -= dt;
-        shotTimer -= dt;
-        if (cooldown > 0) {
-            return;
+    public boolean canFire(long currentTimeMs) {
+        if (lastShotTimeMs < 0) {
+            return true;
         }
-        Enemy target = chooseTarget(enemies);
+        long cooldownMs = (long) (1000.0 / fireRate);
+        return (currentTimeMs - lastShotTimeMs) >= cooldownMs;
+    }
+
+    public Targetable tryAttack(List<Targetable> enemies, long currentTimeMs) {
+        if (enemies == null || enemies.isEmpty() || !canFire(currentTimeMs)) {
+            return null;
+        }
+        Targetable target = selectTarget(enemies);
         if (target != null) {
-            attack(target, enemies);
-            cooldown = 1.0 / fireRate;
-            // remember where we shot so the UI can draw the shot for a moment
-            lastShotX = target.getX();
-            lastShotY = target.getY();
-            shotTimer = SHOT_FLASH_TIME;
-        }
-    }
-
-    /** Default: the enemy in range furthest along the path (closest to escaping). Mage overrides this. */
-    protected Enemy chooseTarget(List<Enemy> enemies) {
-        Enemy target = null;
-        for (Enemy e : enemies) {
-            if (e.isAlive() && inRange(e) && (target == null || e.getProgress() > target.getProgress())) {
-                target = e;
-            }
+            attack(target);
+            lastShotTimeMs = currentTimeMs;
         }
         return target;
     }
 
-    /** Default attack is plain damage to one enemy. Mage overrides this to also slow, Cannon to splash. */
-    protected void attack(Enemy target, List<Enemy> enemies) {
-        target.takeDamage(damage);
+    public Targetable selectTarget(List<Targetable> enemies) {
+        Targetable best = null;
+        double bestMetric = Double.MAX_VALUE;
+
+        for (Targetable enemy : enemies) {
+            if (enemy == null || !enemy.isAlive()) {
+                continue;
+            }
+            double dist = distanceTo(enemy);
+            if (dist > range) {
+                continue;
+            }
+
+            if (best == null) {
+                best = enemy;
+                bestMetric = metricFor(enemy, dist);
+                continue;
+            }
+
+            double metric = metricFor(enemy, dist);
+            if (targetingStrategy == TargetingStrategy.HIGHEST_HEALTH) {
+                if (metric > bestMetric) {
+                    best = enemy;
+                    bestMetric = metric;
+                }
+            } else {
+                if (metric < bestMetric) {
+                    best = enemy;
+                    bestMetric = metric;
+                }
+            }
+        }
+        return best;
     }
 
-    public boolean inRange(Targetable t) {
-        double dx = t.getX() - col;
-        double dy = t.getY() - row;
-        return Math.sqrt(dx * dx + dy * dy) <= range;
+    private double metricFor(Targetable enemy, double dist) {
+        switch (targetingStrategy) {
+            case LOWEST_HEALTH:
+            case HIGHEST_HEALTH:
+                return enemy.getHealth();
+            case NEAREST:
+            default:
+                return dist;
+        }
     }
 
-    public final void upgrade() throws GameException {
+    public double distanceTo(Targetable target) {
+        return Math.hypot(target.getX() - col, target.getY() - row);
+    }
+
+    public boolean isInRange(Targetable target) {
+        return target != null && target.isAlive() && distanceTo(target) <= range;
+    }
+
+    protected abstract void attack(Targetable target);
+
+    protected abstract void applyUpgradeStats();
+
+    public void upgrade() throws MaxUpgradeReachedException {
         if (level >= MAX_LEVEL) {
-            throw new GameException(name + " is already at max level");
+            throw new MaxUpgradeReachedException(level, MAX_LEVEL);
         }
         level++;
-        applyUpgrade();
+        applyUpgradeStats();
+        upgradeCost = (int) Math.round(upgradeCost * 1.5);
     }
 
-    /** What one upgrade level changes. */
-    protected abstract void applyUpgrade();
-
-    /** Short text for the side panel. */
-    public abstract String getStats();
+    public boolean isMaxLevel() {
+        return level >= MAX_LEVEL;
+    }
 
     public String getName() { return name; }
     public int getRow() { return row; }
     public int getCol() { return col; }
     public int getCost() { return cost; }
-    public int getUpgradeCost() { return upgradeCost; }
-    public double getRange() { return range; }
     public int getLevel() { return level; }
-    public boolean isShowingShot() { return shotTimer > 0; }
-    public double getLastShotX() { return lastShotX; }
-    public double getLastShotY() { return lastShotY; }
+    public int getUpgradeCost() { return upgradeCost; }
+    public int getDamage() { return damage; }
+    public double getRange() { return range; }
+    public double getFireRate() { return fireRate; }
+    public TargetingStrategy getTargetingStrategy() { return targetingStrategy; }
+
+    public void setTargetingStrategy(TargetingStrategy targetingStrategy) {
+        if (targetingStrategy != null) {
+            this.targetingStrategy = targetingStrategy;
+        }
+    }
 }
